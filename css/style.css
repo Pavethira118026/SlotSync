@@ -1,0 +1,286 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f4f8fb;
+    color: #263238;
+}
+
+/* ================= HEADER ================= */
+
+header {
+    background: #0f172a;
+    height: 75px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 8%;
+}
+
+.logo {
+    color: #ffd166;
+    font-size: 30px;
+    font-weight: bold;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    margin-left: 25px;
+    font-size: 16px;
+}
+
+nav a:hover {
+    color: #ffd166;
+}
+
+/* ================= HERO ================= */
+
+.hero {
+    height: 90vh;
+
+    background:
+        linear-gradient(
+            rgba(15, 23, 42, 0.65),
+            rgba(15, 23, 42, 0.65)
+        ),
+        url("../images/hero.jpg");
+
+    background-size: cover;
+    background-position: center;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    text-align: center;
+    color: white;
+}
+
+.hero-content {
+    max-width: 750px;
+    padding: 30px;
+}
+
+.hero h1 {
+    font-size: 52px;
+    margin-bottom: 20px;
+}
+
+.hero p {
+    font-size: 20px;
+    line-height: 1.7;
+    margin-bottom: 35px;
+}
+
+.btn {
+    display: inline-block;
+    background: #ffd166;
+    color: #222;
+    text-decoration: none;
+    padding: 15px 35px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.btn:hover {
+    background: #ffc233;
+}
+
+/* ================= FEATURES ================= */
+
+.features {
+    padding: 70px 8%;
+    background: #eef6f9;
+    text-align: center;
+}
+
+.features h2 {
+    color: #0f172a;
+    font-size: 34px;
+    margin-bottom: 40px;
+}
+
+.feature-container {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    flex-wrap: wrap;
+}
+
+.feature-card {
+    width: 290px;
+    background: white;
+    border-radius: 12px;
+    padding: 30px 25px;
+
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+
+    transition: 0.3s;
+}
+
+.feature-card:hover {
+    transform: translateY(-8px);
+}
+
+.icon {
+    font-size: 40px;
+    margin-bottom: 15px;
+}
+
+.feature-card h3 {
+    color: #15616d;
+    font-size: 21px;
+    margin-bottom: 15px;
+}
+
+.feature-card p {
+    color: #555;
+    line-height: 1.6;
+}
+
+/* ================= HOW IT WORKS ================= */
+
+.how-it-works {
+    padding: 70px 8%;
+    text-align: center;
+    background: white;
+}
+
+.how-it-works h2 {
+    color: #0f172a;
+    font-size: 34px;
+    margin-bottom: 40px;
+}
+
+.steps {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+
+.step {
+    width: 280px;
+    padding: 25px;
+}
+
+.step span {
+    display: inline-flex;
+
+    width: 50px;
+    height: 50px;
+
+    justify-content: center;
+    align-items: center;
+
+    border-radius: 50%;
+
+    background: #15616d;
+    color: white;
+
+    font-size: 22px;
+    font-weight: bold;
+
+    margin-bottom: 15px;
+}
+
+.step h3 {
+    color: #15616d;
+    margin-bottom: 12px;
+}
+
+.step p {
+    color: #666;
+    line-height: 1.6;
+}
+
+/* ================= BOOKING SECTION ================= */
+
+.booking-section {
+    padding: 70px 20px;
+
+    text-align: center;
+
+    background:
+        linear-gradient(
+            rgba(21, 97, 109, 0.92),
+            rgba(15, 23, 42, 0.92)
+        );
+
+    color: white;
+}
+
+.booking-section h2 {
+    font-size: 36px;
+    margin-bottom: 15px;
+}
+
+.booking-section p {
+    font-size: 18px;
+    margin-bottom: 30px;
+}
+
+/* ================= FOOTER ================= */
+
+footer {
+    background: #0f172a;
+    color: white;
+    text-align: center;
+    padding: 25px;
+}
+
+.footer-content h3 {
+    color: #ffd166;
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.footer-content p {
+    margin: 6px 0;
+    color: #d6d6d6;
+}
+
+/* ================= MOBILE ================= */
+
+@media (max-width: 700px) {
+
+    header {
+        height: auto;
+        padding: 20px;
+
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    nav a {
+        margin: 0 7px;
+        font-size: 13px;
+    }
+
+    .hero {
+        height: 75vh;
+    }
+
+    .hero h1 {
+        font-size: 36px;
+    }
+
+    .hero p {
+        font-size: 16px;
+    }
+
+    .features h2,
+    .how-it-works h2 {
+        font-size: 28px;
+    }
+
+    .booking-section h2 {
+        font-size: 28px;
+    }
+}
