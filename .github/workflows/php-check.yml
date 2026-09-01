@@ -4,44 +4,42 @@ on:
   push:
     branches:
       - main
-
   pull_request:
     branches:
       - main
 
 jobs:
-
   php-check:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout SlotSync
+      - name: Checkout SlotSync code
         uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
 
-      - name: Check PHP Version
+      - name: Check PHP version
         run: php -v
 
       - name: Check PHP Syntax
         run: |
           echo "Checking PHP files..."
-
-          find . -name "*.php" -print0 |
-          while IFS= read -r -d '' file
-          do
+          for file in $(find . -name "*.php" -not -path "./.git/*"); do
             echo "Checking $file"
             php -l "$file"
           done
 
+      - name: Build Docker Image
+        run: |
+          docker build -t slotsync-web:ci .
+
       - name: Pipeline Completed
         run: |
-          echo "=============================="
+          echo "================================="
           echo "SlotSync CI Pipeline Successful"
           echo "PHP syntax check completed"
-          echo "=============================="
+          echo "Docker image build completed"
+          echo "================================="
