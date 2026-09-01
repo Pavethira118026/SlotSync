@@ -1,71 +1,49 @@
 <?php
-
 session_start();
 
-include "config/db.php";
+/* DATABASE CONNECTION */
+$conn = new mysqli(
+    "db",
+    "slotsync_user",
+    "slotsync_password",
+    "slotsync"
+);
 
-// Check login
-if (!isset($_SESSION['user_id'])) {
+if ($conn->connect_error) {
+    die("Database connection failed: " . $conn->connect_error);
+}
+
+/* CHECK LOGIN */
+if (!isset($_SESSION["user_id"])) {
     header("Location: login.php");
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
-
-// Check booking ID
-if (!isset($_GET['id']) || empty($_GET['id'])) {
-    die("Booking ID is missing.");
+/* CHECK BOOKING ID */
+if (!isset($_GET["id"]) || empty($_GET["id"])) {
+    header("Location: my_bookings.php");
+    exit();
 }
 
-$booking_id = intval($_GET['id']);
+$booking_id = (int) $_GET["id"];
+$user_id = (int) $_SESSION["user_id"];
 
-// Cancel only the logged-in user's booking
-$sql = "UPDATE bookings
-        SET booking_status = 'Cancelled'
-        WHERE id = ?
-        AND user_id = ?
-        AND booking_status = 'Confirmed'";
+/* CANCEL ONLY THE LOGGED-IN USER'S BOOKING */
+$stmt = $conn->prepare("
+    UPDATE bookings
+    SET booking_status = 'Cancelled'
+    WHERE id = ? AND user_id = ?
+");
 
-$stmt = $conn->prepare($sql);
-
-if (!$stmt) {
-    die("Database Error: " . $conn->error);
-}
-
-$stmt->bind_param(
-    "ii",
-    $booking_id,
-    $user_id
-);
+$stmt->bind_param("ii", $booking_id, $user_id);
 
 if ($stmt->execute()) {
-
-    if ($stmt->affected_rows > 0) {
-
-        header("Location: my_bookings.php?cancelled=1");
-        exit();
-
-    } else {
-
-        echo "
-        <h2>Unable to cancel booking.</h2>
-        <p>The booking may already be cancelled.</p>
-        <a href='my_bookings.php'>Back to My Bookings</a>
-        ";
-
-    }
-
+    header("Location: my_bookings.php?message=cancelled");
+    exit();
 } else {
-
-    echo "
-    <h2>Cancellation Error</h2>
-    <p>" . htmlspecialchars($stmt->error) . "</p>
-    <a href='my_bookings.php'>Back to My Bookings</a>
-    ";
-
+    echo "Unable to cancel booking.";
 }
 
 $stmt->close();
 $conn->close();
-
 ?>

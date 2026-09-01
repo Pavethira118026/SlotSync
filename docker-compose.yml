@@ -1,0 +1,28 @@
+services:
+
+  web:
+    build: .
+    container_name: slotsync-web
+    ports:
+      - "8081:80"
+    depends_on:
+      - db
+    volumes:
+      - .:/var/www/html
+
+  db:
+    image: mysql:8.0
+    container_name: slotsync-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: slotsync
+      MYSQL_USER: slotsync_user
+      MYSQL_PASSWORD: slotsync_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - slotsync_db:/var/lib/mysql
+
+volumes:
+  slotsync_db:

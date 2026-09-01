@@ -1,565 +1,183 @@
 <?php
-
-/* =====================================
-   ERROR REPORTING
-===================================== */
-
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-
-/* =====================================
-   START SESSION
-===================================== */
-
 session_start();
 
+// Database connection
+$conn = new mysqli(
+    "db",
+    "slotsync_user",
+    "slotsync_password",
+    "slotsync"
+);
 
-/* =====================================
-   DATABASE CONNECTION
-===================================== */
-
-include "config/db.php";
-
-
-/* =====================================
-   GET ROOMS
-===================================== */
-
-$sql = "SELECT * FROM rooms ORDER BY id ASC";
-
-$result = $conn->query($sql);
-
-
-if (!$result) {
-
-    die(
-        "Room database error: " .
-        $conn->error
-    );
-
+// Check connection
+if ($conn->connect_error) {
+    die("Database Connection Failed: " . $conn->connect_error);
 }
 
+// Get all rooms
+$sql = "SELECT * FROM rooms";
+$result = $conn->query($sql);
 ?>
 
-
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>
-        BookMySapce - Rooms
-    </title>
+    <title>Choose Your Room - BookMySapce</title>
 
+    <link rel="stylesheet" href="css/style.css">
 
     <style>
-
-        /* =====================================
-           GENERAL
-        ===================================== */
 
         * {
             box-sizing: border-box;
         }
 
-
         body {
-
             margin: 0;
-
-            font-family:
-                Arial,
-                Helvetica,
-                sans-serif;
-
-            background:
-                linear-gradient(
-                    rgba(240, 248, 250, 0.95),
-                    rgba(240, 248, 250, 0.95)
-                );
-
-            color: #333;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
         }
-
-
-        /* =====================================
-           HEADER
-        ===================================== */
 
         header {
-
             background: #ffffff;
-
-            padding: 18px 7%;
-
+            padding: 18px 8%;
             display: flex;
-
             justify-content: space-between;
-
             align-items: center;
-
-            box-shadow:
-                0 2px 10px
-                rgba(0, 0, 0, 0.10);
-
-            position: sticky;
-
-            top: 0;
-
-            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
-
 
         .logo {
-
-            font-size: 29px;
-
+            font-size: 26px;
             font-weight: bold;
-
-            color: #15616d;
+            color: #2563eb;
         }
 
+        nav a {
+            text-decoration: none;
+            margin-left: 20px;
+            color: #333;
+            font-weight: 500;
+        }
 
-        nav {
+        nav a:hover {
+            color: #2563eb;
+        }
 
-            display: flex;
+        .page-title {
+            text-align: center;
+            padding: 40px 20px 20px;
+        }
 
-            align-items: center;
+        .page-title h1 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+
+        .page-title p {
+            color: #64748b;
+        }
+
+        .room-container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 30px auto 60px;
+
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 
             gap: 25px;
         }
 
+        .room-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
 
-        nav a {
-
-            text-decoration: none;
-
-            color: #333;
-
-            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
 
             transition: 0.3s;
         }
 
-
-        nav a:hover {
-
-            color: #15616d;
-        }
-
-
-        .login-btn {
-
-            background: #15616d;
-
-            color: white;
-
-            padding:
-                10px 18px;
-
-            border-radius: 7px;
-        }
-
-
-        .login-btn:hover {
-
-            color: white;
-
-            background: #0f4f59;
-        }
-
-
-        /* =====================================
-           PAGE HEADER
-        ===================================== */
-
-        .page-header {
-
-            text-align: center;
-
-            padding:
-                55px 20px 35px;
-        }
-
-
-        .page-header h1 {
-
-            margin: 0;
-
-            color: #15616d;
-
-            font-size: 38px;
-        }
-
-
-        .page-header p {
-
-            margin-top: 12px;
-
-            color: #666;
-
-            font-size: 17px;
-        }
-
-
-        /* =====================================
-           ROOM GRID
-        ===================================== */
-
-        .rooms-container {
-
-            width: 90%;
-
-            max-width: 1200px;
-
-            margin:
-                0 auto 60px;
-
-            display: grid;
-
-            grid-template-columns:
-                repeat(3, 1fr);
-
-            gap: 28px;
-        }
-
-
-        /* =====================================
-           ROOM CARD
-        ===================================== */
-
-        .room-card {
-
-            background: white;
-
-            border-radius: 15px;
-
-            overflow: hidden;
-
-            box-shadow:
-                0 8px 25px
-                rgba(0, 0, 0, 0.10);
-
-            transition:
-                transform 0.3s,
-                box-shadow 0.3s;
-        }
-
-
         .room-card:hover {
+            transform: translateY(-5px);
 
-            transform:
-                translateY(-6px);
-
-            box-shadow:
-                0 14px 30px
-                rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
         }
-
-
-        /* =====================================
-           ROOM IMAGE
-        ===================================== */
 
         .room-image {
-
             width: 100%;
-
-            height: 230px;
-
+            height: 200px;
             object-fit: cover;
-
-            display: block;
         }
 
-
-        /* =====================================
-           ROOM CONTENT
-        ===================================== */
-
-        .room-content {
-
-            padding: 22px;
+        .room-details {
+            padding: 20px;
         }
 
-
-        .room-content h2 {
-
-            margin:
-                0 0 8px;
-
-            color: #15616d;
-
-            font-size: 24px;
+        .room-details h2 {
+            margin-top: 0;
+            color: #1e293b;
         }
 
-
-        .room-type {
-
-            display: inline-block;
-
-            padding:
-                5px 10px;
-
-            border-radius: 20px;
-
-            background: #e7f5f7;
-
-            color: #15616d;
-
-            font-size: 13px;
-
-            font-weight: bold;
-
-            margin-bottom: 12px;
-        }
-
-
-        .description {
-
-            color: #666;
-
+        .room-details p {
+            color: #64748b;
             line-height: 1.6;
-
-            min-height: 52px;
-
-            margin-bottom: 15px;
         }
 
-
-        /* =====================================
-           ROOM INFO
-        ===================================== */
-
-        .room-info {
-
-            display: flex;
-
-            justify-content:
-                space-between;
-
-            gap: 10px;
-
-            padding:
-                12px 0;
-
-            border-top:
-                1px solid #eeeeee;
-
-            border-bottom:
-                1px solid #eeeeee;
-
-            margin-bottom: 18px;
-        }
-
-
-        .info-item {
-
-            text-align: center;
-
-            flex: 1;
-        }
-
-
-        .info-label {
-
-            display: block;
-
-            font-size: 12px;
-
-            color: #777;
-
-            margin-bottom: 4px;
-        }
-
-
-        .info-value {
-
+        .location {
             font-weight: bold;
-
-            color: #333;
+            color: #475569;
         }
-
-
-        /* =====================================
-           PRICE
-        ===================================== */
 
         .price {
-
-            font-size: 23px;
-
+            font-size: 20px;
+            color: #16a34a;
             font-weight: bold;
-
-            color: #15616d;
-
-            margin:
-                0 0 18px;
+            margin: 15px 0;
         }
 
+        .btn {
+            display: inline-block;
+            background: #2563eb;
+            color: white;
 
-        .price span {
-
-            font-size: 14px;
-
-            font-weight: normal;
-
-            color: #777;
-        }
-
-
-        /* =====================================
-           AVAILABLE BUTTON
-        ===================================== */
-
-        .book-btn {
-
-            display: block;
-
-            width: 100%;
-
-            padding: 13px;
-
-            text-align: center;
+            padding: 12px 20px;
 
             text-decoration: none;
 
-            background: #15616d;
-
-            color: white;
-
             border-radius: 8px;
 
-            font-size: 16px;
-
             font-weight: bold;
-
-            transition:
-                background 0.3s;
         }
 
-
-        .book-btn:hover {
-
-            background: #0f4f59;
-
-            color: white;
+        .btn:hover {
+            background: #1d4ed8;
         }
 
-
-        /* =====================================
-           NO ROOMS
-        ===================================== */
-
-        .no-rooms {
-
-            width: 90%;
-
-            max-width: 700px;
-
-            margin:
-                40px auto;
-
-            background: white;
-
-            padding: 40px;
-
-            border-radius: 12px;
-
+        .no-room {
             text-align: center;
-
-            box-shadow:
-                0 5px 20px
-                rgba(0, 0, 0, 0.08);
+            font-size: 20px;
+            color: red;
         }
-
-
-        /* =====================================
-           FOOTER
-        ===================================== */
 
         footer {
-
-            background: #15616d;
-
+            background: #1e293b;
             color: white;
-
             text-align: center;
-
-            padding: 25px;
-
-            margin-top: 50px;
-        }
-
-
-        /* =====================================
-           MOBILE
-        ===================================== */
-
-        @media (max-width: 900px) {
-
-            .rooms-container {
-
-                grid-template-columns:
-                    repeat(2, 1fr);
-            }
-
-        }
-
-
-        @media (max-width: 600px) {
-
-            header {
-
-                flex-direction: column;
-
-                gap: 15px;
-            }
-
-
-            nav {
-
-                flex-wrap: wrap;
-
-                justify-content: center;
-
-                gap: 15px;
-            }
-
-
-            .rooms-container {
-
-                grid-template-columns: 1fr;
-            }
-
-
-            .page-header h1 {
-
-                font-size: 30px;
-            }
-
+            padding: 20px;
         }
 
     </style>
 
 </head>
 
-
 <body>
-
-
-<!-- =====================================
-     HEADER
-===================================== -->
 
 <header>
 
@@ -567,329 +185,153 @@ if (!$result) {
         BookMySapce
     </div>
 
-
     <nav>
 
-        <a href="index.php">
-            Home
-        </a>
+        <a href="index.php">Home</a>
 
-        <a href="rooms.php">
-            Rooms
-        </a>
+        <a href="rooms.php">Rooms</a>
 
+        <a href="booking_status.php">Bookings</a>
 
-        <?php if (isset($_SESSION['user_id'])): ?>
+        <?php if (isset($_SESSION['user_id'])) { ?>
 
-            <a href="dashboard.php">
-                My Bookings
-            </a>
+            <a href="logout.php">Logout</a>
 
-            <a href="logout.php">
-                Logout
-            </a>
+        <?php } else { ?>
 
-        <?php else: ?>
+            <a href="login.php">Login</a>
 
-            <a
-                href="login.php"
-                class="login-btn"
-            >
-                Login
-            </a>
+            <a href="register.php">Register</a>
 
-        <?php endif; ?>
+        <?php } ?>
 
     </nav>
 
 </header>
 
 
+<section class="page-title">
 
-<!-- =====================================
-     PAGE TITLE
-===================================== -->
-
-<section class="page-header">
-
-    <h1>
-        Choose Your Room
-    </h1>
+    <h1>Choose Your Room</h1>
 
     <p>
-        Book comfortable rooms by the hour
-        with BookMySapce.
+        Select your preferred room and book it according to your required hours.
     </p>
 
 </section>
 
 
+<div class="room-container">
 
-<!-- =====================================
-     ROOM LIST
-===================================== -->
+<?php
 
-<?php if ($result->num_rows > 0): ?>
+if ($result && $result->num_rows > 0) {
 
+    while ($room = $result->fetch_assoc()) {
 
-<div class="rooms-container">
+?>
 
+        <div class="room-card">
 
-<?php while ($room = $result->fetch_assoc()): ?>
+            <!-- ROOM IMAGE -->
 
+            <img
+                src="<?php echo htmlspecialchars($room['image'] ?? ''); ?>"
+                alt="<?php echo htmlspecialchars($room['name'] ?? 'Room'); ?>"
+                class="room-image"
+            >
 
-    <!-- ROOM CARD -->
 
-    <div class="room-card">
+            <div class="room-details">
 
+                <!-- ROOM NAME -->
 
-        <!-- ROOM IMAGE -->
+                <h2>
+                    <?php echo htmlspecialchars($room['name'] ?? 'Room'); ?>
+                </h2>
 
-        <img
-            src="rooms/<?php
-                echo htmlspecialchars(
-                    $room['image']
-                );
-            ?>"
-            alt="<?php
-                echo htmlspecialchars(
-                    $room['room_name']
-                );
-            ?>"
-            class="room-image"
-        >
 
+                <!-- DESCRIPTION -->
 
-        <!-- ROOM CONTENT -->
+                <p>
+                    <?php echo htmlspecialchars($room['description'] ?? 'No description available.'); ?>
+                </p>
 
-        <div class="room-content">
 
+                <!-- LOCATION -->
 
-            <!-- ROOM NAME -->
+                <p class="location">
 
-            <h2>
+                    📍 Location:
+                    <?php echo htmlspecialchars($room['location'] ?? 'N/A'); ?>
 
-                <?php
-                echo htmlspecialchars(
-                    $room['room_name']
-                );
-                ?>
+                </p>
 
-            </h2>
 
+                <!-- PRICE -->
 
-            <!-- ROOM TYPE -->
+                <div class="price">
 
-            <div class="room-type">
+                    ₹<?php echo number_format((float)$room['price_per_hour'], 2); ?>
 
-                <?php
-
-                if (
-                    isset($room['room_type'])
-                    &&
-                    !empty($room['room_type'])
-                ) {
-
-                    echo htmlspecialchars(
-                        $room['room_type']
-                    );
-
-                } else {
-
-                    echo "Room";
-
-                }
-
-                ?>
-
-            </div>
-
-
-            <!-- DESCRIPTION -->
-
-            <p class="description">
-
-                <?php
-
-                if (
-                    isset($room['description'])
-                    &&
-                    !empty($room['description'])
-                ) {
-
-                    echo htmlspecialchars(
-                        $room['description']
-                    );
-
-                } else {
-
-                    echo
-                    "Comfortable room available for hourly booking.";
-
-                }
-
-                ?>
-
-            </p>
-
-
-            <!-- ROOM INFORMATION -->
-
-            <div class="room-info">
-
-
-                <div class="info-item">
-
-                    <span class="info-label">
-                        Capacity
-                    </span>
-
-                    <span class="info-value">
-
-                        <?php
-
-                        if (
-                            isset($room['capacity'])
-                            &&
-                            $room['capacity'] != ""
-                        ) {
-
-                            echo htmlspecialchars(
-                                $room['capacity']
-                            );
-
-                        } else {
-
-                            echo "N/A";
-
-                        }
-
-                        ?>
-
-                    </span>
-
-                </div>
-
-
-                <div class="info-item">
-
-                    <span class="info-label">
-                        Booking
-                    </span>
-
-                    <span class="info-value">
-                        Hourly
-                    </span>
-
-                </div>
-
-
-            </div>
-
-
-            <!-- PRICE -->
-
-            <div class="price">
-
-                ₹<?php
-
-                echo number_format(
-                    floatval(
-                        $room['price_per_hour']
-                    ),
-                    2
-                );
-
-                ?>
-
-                <span>
                     / hour
-                </span>
+
+                </div>
+
+
+                <!-- BOOK NOW -->
+
+                <?php if (isset($_SESSION['user_id'])) { ?>
+
+                    <a
+                        href="booking.php?room_id=<?php echo $room['id']; ?>"
+                        class="btn"
+                    >
+                        Book Now
+                    </a>
+
+                <?php } else { ?>
+
+                    <a
+                        href="login.php"
+                        class="btn"
+                    >
+                        Login to Book
+                    </a>
+
+                <?php } ?>
 
             </div>
-
-
-            <!-- =================================
-                 AVAILABLE / BOOK BUTTON
-
-                 IMPORTANT:
-                 room_id is passed here
-            ================================== -->
-
-            <?php if (isset($_SESSION['user_id'])): ?>
-
-                <a
-                    href="booking.php?room_id=<?php
-                        echo intval(
-                            $room['id']
-                        );
-                    ?>"
-                    class="book-btn"
-                >
-
-                    Available - Book Now
-
-                </a>
-
-            <?php else: ?>
-
-                <a
-                    href="login.php"
-                    class="book-btn"
-                >
-
-                    Login to Book
-
-                </a>
-
-            <?php endif; ?>
-
 
         </div>
 
-    </div>
+<?php
 
+    }
 
-<?php endwhile; ?>
+} else {
 
+?>
 
-</div>
+    <p class="no-room">
 
+        No rooms available.
 
-<?php else: ?>
-
-
-<!-- =====================================
-     NO ROOMS
-===================================== -->
-
-<div class="no-rooms">
-
-    <h2>
-        No Rooms Available
-    </h2>
-
-    <p>
-        There are currently no rooms
-        available for booking.
     </p>
 
+<?php
+
+}
+
+?>
+
 </div>
 
-
-<?php endif; ?>
-
-
-
-<!-- =====================================
-     FOOTER
-===================================== -->
 
 <footer>
 
     <p>
-        © 2026 BookMySapce -
-        Hourly Room Booking System
+        © 2026 BookMySapce - Hourly Room Booking System
     </p>
 
 </footer>
@@ -898,3 +340,9 @@ if (!$result) {
 </body>
 
 </html>
+
+<?php
+
+$conn->close();
+
+?>

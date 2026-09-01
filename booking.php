@@ -1,300 +1,469 @@
 <?php
+
 session_start();
 
-include "config/db.php";
+/* =========================================================
+   SLOTSYNC - BOOKING PAGE
+   ========================================================= */
 
-/* Check login */
+
+/* =========================================================
+   CHECK LOGIN
+   ========================================================= */
+
 if (!isset($_SESSION['user_id'])) {
+
     header("Location: login.php");
     exit();
+
 }
 
-$user_id = $_SESSION['user_id'];
+
+/* =========================================================
+   DATABASE CONNECTION
+   ========================================================= */
+
+$conn = new mysqli(
+    "db",
+    "slotsync_user",
+    "slotsync_password",
+    "slotsync"
+);
 
 
-/* Check room */
-if (!isset($_GET['room_id']) || !is_numeric($_GET['room_id'])) {
-    die("Room not selected.");
+if ($conn->connect_error) {
+
+    die("Database connection failed: " . $conn->connect_error);
+
 }
 
-$room_id = intval($_GET['room_id']);
+
+$conn->set_charset("utf8mb4");
 
 
-/* Get room details */
-$sql = "SELECT *
-        FROM rooms
-        WHERE id = ?";
+/* =========================================================
+   USER
+   ========================================================= */
 
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $room_id);
-$stmt->execute();
+$user_id = (int) $_SESSION['user_id'];
 
-$result = $stmt->get_result();
+$user_name = $_SESSION['user_name'] ?? "User";
 
-if ($result->num_rows == 0) {
-    die("Room not found.");
-}
 
-$room = $result->fetch_assoc();
-
-$stmt->close();
-
+/* =========================================================
+   VARIABLES
+   ========================================================= */
 
 $message = "";
 $message_type = "";
 
-
-/* =====================================================
-   BOOKING
-   ===================================================== */
-
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-
-    $booking_date = $_POST['booking_date'] ?? "";
-    $start_time   = $_POST['start_time'] ?? "";
-    $end_time     = $_POST['end_time'] ?? "";
+$selected_room = "";
+$selected_date = "";
+$selected_start = "";
+$selected_end = "";
 
 
-    /* Basic validation */
+/* =========================================================
+   ROOM FROM URL
+   Example:
+   booking.php?room_id=1
+   ========================================================= */
+
+if (isset($_GET['room_id'])) {
+
+    $selected_room = (int) $_GET['room_id'];
+
+}
+
+
+/* =========================================================
+   PROCESS BOOKING
+   ========================================================= */
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+
+
+    $selected_room = isset($_POST['room_id'])
+        ? (int) $_POST['room_id']
+        : 0;
+
+    $selected_date = $_POST['booking_date'] ?? "";
+
+    $selected_start = $_POST['start_time'] ?? "";
+
+    $selected_end = $_POST['end_time'] ?? "";
+
+
+    /* =====================================================
+       BASIC VALIDATION
+       ===================================================== */
 
     if (
-        empty($booking_date) ||
-        empty($start_time) ||
-        empty($end_time)
+        $selected_room <= 0 ||
+        empty($selected_date) ||
+        empty($selected_start) ||
+        empty($selected_end)
     ) {
 
-        $message = "Please select date, start time and end time.";
+        $message =
+            "Please select a room, date, start time and end time.";
+
         $message_type = "error";
 
     } else {
 
-        /*
-         * Convert HH:MM into minutes
-         */
 
-        list($start_hour, $start_minute) =
-            array_map('intval', explode(':', $start_time));
+        /* =================================================
+           DATE VALIDATION
+           ================================================= */
 
-        list($end_hour, $end_minute) =
-            array_map('intval', explode(':', $end_time));
+        $today = date("Y-m-d");
 
 
-        $start_minutes =
-            ($start_hour * 60) + $start_minute;
-
-        $end_minutes =
-            ($end_hour * 60) + $end_minute;
-
-
-        /* Check end time */
-
-        if ($end_minutes <= $start_minutes) {
+        if ($selected_date < $today) {
 
             $message =
-                "End time must be later than start time.";
+                "You cannot book a previous date.";
 
             $message_type = "error";
 
         } else {
 
-            /*
-             * Calculate total minutes
-             */
 
-            $total_minutes =
-                $end_minutes - $start_minutes;
+            /* =================================================
+               TIME VALIDATION
+               ================================================= */
 
+            $start_timestamp =
+                strtotime($selected_start);
 
-            /*
-             * Convert minutes to hours
-             *
-             * Example:
-             * 60 minutes = 1 hour
-             * 120 minutes = 2 hours
-             * 90 minutes = 1.5 hours
-             */
-
-            $total_hours =
-                $total_minutes / 60;
+            $end_timestamp =
+                strtotime($selected_end);
 
 
-            /*
-             * Minimum 1 hour
-             */
-
-            if ($total_minutes < 60) {
+            if (
+                $start_timestamp === false ||
+                $end_timestamp === false
+            ) {
 
                 $message =
-                    "Please select at least 1 hour.";
+                    "Invalid time selected.";
+
+                $message_type = "error";
+
+            } elseif ($end_timestamp <= $start_timestamp) {
+
+                $message =
+                    "End time must be later than starting time.";
 
                 $message_type = "error";
 
             } else {
 
-                /* Check previous date */
 
-                $today = date("Y-m-d");
+                /* =================================================
+                   CALCULATE DURATION
+                   ================================================= */
 
-                if ($booking_date < $today) {
+                $start_minutes =
+                    ((int) date("H", $start_timestamp) * 60)
+                    + (int) date("i", $start_timestamp);
+
+
+                $end_minutes =
+                    ((int) date("H", $end_timestamp) * 60)
+                    + (int) date("i", $end_timestamp);
+
+
+                $duration_minutes =
+                    $end_minutes - $start_minutes;
+
+
+                /* Only complete hours */
+
+                if ($duration_minutes % 60 !== 0) {
 
                     $message =
-                        "You cannot book a previous date.";
+                        "Please select a whole number of hours.";
 
                     $message_type = "error";
 
                 } else {
 
-                    /*
-                     * Check overlapping booking
-                     */
 
-                    $check_sql = "
-                        SELECT id
-                        FROM bookings
-                        WHERE room_id = ?
-                        AND booking_date = ?
-                        AND booking_status = 'Confirmed'
-                        AND start_time < ?
-                        AND end_time > ?
-                    ";
-
-                    $check_stmt =
-                        $conn->prepare($check_sql);
-
-                    if (!$check_stmt) {
-                        die(
-                            "Database Error: "
-                            . $conn->error
-                        );
-                    }
+                    $duration =
+                        $duration_minutes / 60;
 
 
-                    $check_stmt->bind_param(
-                        "isss",
-                        $room_id,
-                        $booking_date,
-                        $end_time,
-                        $start_time
-                    );
-
-
-                    $check_stmt->execute();
-
-                    $check_result =
-                        $check_stmt->get_result();
-
-
-                    if ($check_result->num_rows > 0) {
+                    if ($duration < 1) {
 
                         $message =
-                            "Sorry! This room is already booked for the selected time.";
+                            "Please select at least one hour.";
 
                         $message_type = "error";
 
                     } else {
 
-                        /*
-                         * Calculate amount
-                         */
 
-                        $price_per_hour =
-                            floatval(
-                                $room['price_per_hour']
-                            );
+                        /* =================================================
+                           GET ROOM
+                           ================================================= */
 
-
-                        $total_amount =
-                            $total_hours *
-                            $price_per_hour;
-
-
-                        /*
-                         * Insert booking
-                         */
-
-                        $insert_sql = "
-                            INSERT INTO bookings
-                            (
-                                user_id,
-                                room_id,
-                                booking_date,
-                                start_time,
-                                end_time,
-                                total_hours,
-                                total_amount,
-                                booking_status,
-                                created_at
-                            )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                'Confirmed',
-                                NOW()
-                            )
+                        $room_sql = "
+                            SELECT
+                                id,
+                                name,
+                                description,
+                                location,
+                                price_per_hour,
+                                image
+                            FROM rooms
+                            WHERE id = ?
+                            LIMIT 1
                         ";
 
 
-                        $insert_stmt =
-                            $conn->prepare($insert_sql);
+                        $room_stmt =
+                            $conn->prepare($room_sql);
 
 
-                        if (!$insert_stmt) {
-
-                            die(
-                                "Database Error: "
-                                . $conn->error
-                            );
-
-                        }
-
-
-                        $insert_stmt->bind_param(
-                            "iisssdd",
-                            $user_id,
-                            $room_id,
-                            $booking_date,
-                            $start_time,
-                            $end_time,
-                            $total_hours,
-                            $total_amount
-                        );
-
-
-                        if ($insert_stmt->execute()) {
-
-                            $booking_id =
-                                $conn->insert_id;
-
-
-                            header(
-                                "Location: booking_success.php?id="
-                                . $booking_id
-                            );
-
-                            exit();
-
-                        } else {
+                        if (!$room_stmt) {
 
                             $message =
-                                "Booking failed. Please try again.";
+                                "Room query error: "
+                                . $conn->error;
 
                             $message_type = "error";
 
+                        } else {
+
+
+                            $room_stmt->bind_param(
+                                "i",
+                                $selected_room
+                            );
+
+
+                            $room_stmt->execute();
+
+
+                            $room_result =
+                                $room_stmt->get_result();
+
+
+                            if ($room_result->num_rows === 0) {
+
+                                $message =
+                                    "Selected room does not exist.";
+
+                                $message_type = "error";
+
+                            } else {
+
+
+                                $room =
+                                    $room_result->fetch_assoc();
+
+
+                                $room_name =
+                                    $room['name'];
+
+
+                                $price_per_hour =
+                                    (float) $room['price_per_hour'];
+
+
+                                /* =================================================
+                                   CHECK BOOKING CONFLICT
+                                   ================================================= */
+
+                                $conflict_sql = "
+                                    SELECT id
+                                    FROM bookings
+                                    WHERE room_id = ?
+                                    AND booking_date = ?
+                                    AND booking_status = 'Confirmed'
+                                    AND start_time < ?
+                                    AND end_time > ?
+                                    LIMIT 1
+                                ";
+
+
+                                $conflict_stmt =
+                                    $conn->prepare(
+                                        $conflict_sql
+                                    );
+
+
+                                if (!$conflict_stmt) {
+
+                                    $message =
+                                        "Booking check error: "
+                                        . $conn->error;
+
+                                    $message_type = "error";
+
+                                } else {
+
+
+                                    $conflict_stmt->bind_param(
+                                        "isss",
+                                        $selected_room,
+                                        $selected_date,
+                                        $selected_end,
+                                        $selected_start
+                                    );
+
+
+                                    $conflict_stmt->execute();
+
+
+                                    $conflict_result =
+                                        $conflict_stmt->get_result();
+
+
+                                    /* =============================================
+                                       CONFLICT FOUND
+                                       ============================================= */
+
+                                    if (
+                                        $conflict_result->num_rows > 0
+                                    ) {
+
+                                        $message =
+                                            "This room is already booked for the selected time.";
+
+                                        $message_type = "error";
+
+                                    } else {
+
+
+                                        /* =================================================
+                                           CALCULATE TOTAL
+                                           ================================================= */
+
+                                        $total_amount =
+                                            $duration * $price_per_hour;
+
+
+                                        /* =================================================
+                                           INSERT BOOKING
+                                           ================================================= */
+
+                                        $insert_sql = "
+                                            INSERT INTO bookings
+                                            (
+                                                user_id,
+                                                room_id,
+                                                booking_date,
+                                                start_time,
+                                                end_time,
+                                                duration,
+                                                total_amount,
+                                                booking_status
+                                            )
+                                            VALUES
+                                            (
+                                                ?,
+                                                ?,
+                                                ?,
+                                                ?,
+                                                ?,
+                                                ?,
+                                                ?,
+                                                'Confirmed'
+                                            )
+                                        ";
+
+
+                                        $insert_stmt =
+                                            $conn->prepare(
+                                                $insert_sql
+                                            );
+
+
+                                        if (!$insert_stmt) {
+
+                                            $message =
+                                                "Booking creation error: "
+                                                . $conn->error;
+
+                                            $message_type = "error";
+
+                                        } else {
+
+
+                                            $insert_stmt->bind_param(
+                                                "iisssdd",
+                                                $user_id,
+                                                $selected_room,
+                                                $selected_date,
+                                                $selected_start,
+                                                $selected_end,
+                                                $duration,
+                                                $total_amount
+                                            );
+
+
+                                            if (
+                                                $insert_stmt->execute()
+                                            ) {
+
+                                                $booking_id =
+                                                    $conn->insert_id;
+
+
+                                                $message =
+                                                    "Booking successful! "
+                                                    . "Your Booking ID is #"
+                                                    . $booking_id;
+
+
+                                                $message_type =
+                                                    "success";
+
+
+                                                /* Clear form */
+
+                                                $selected_room = "";
+
+                                                $selected_date = "";
+
+                                                $selected_start = "";
+
+                                                $selected_end = "";
+
+                                            } else {
+
+                                                $message =
+                                                    "Booking failed: "
+                                                    . $insert_stmt->error;
+
+                                                $message_type =
+                                                    "error";
+
+                                            }
+
+
+                                            $insert_stmt->close();
+
+                                        }
+
+                                    }
+
+
+                                    $conflict_stmt->close();
+
+                                }
+
+                            }
+
+
+                            $room_stmt->close();
+
                         }
 
-
-                        $insert_stmt->close();
-
                     }
-
-
-                    $check_stmt->close();
 
                 }
 
@@ -303,10 +472,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
     }
+
 }
 
-?>
 
+/* =========================================================
+   GET ALL ROOMS
+   ========================================================= */
+
+$rooms_sql = "
+    SELECT
+        id,
+        name,
+        description,
+        location,
+        price_per_hour,
+        image
+    FROM rooms
+    ORDER BY name ASC
+";
+
+
+$rooms_result =
+    $conn->query($rooms_sql);
+
+?>
 
 <!DOCTYPE html>
 
@@ -314,344 +504,522 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 <head>
 
-<meta charset="UTF-8">
+    <meta charset="UTF-8">
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-<title>Book Room - SlotSync</title>
+    <title>
+        Book Room - SlotSync
+    </title>
 
 
-<style>
+    <style>
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
 
-body {
-    font-family: Arial, sans-serif;
-    background: #f1f5f9;
-    color: #1e293b;
-}
+        body {
 
+            font-family: Arial, Helvetica, sans-serif;
 
-header {
-    background: #0f172a;
-    color: white;
+            background: #f4f7fb;
 
-    padding: 20px 5%;
+            color: #1f2937;
 
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+        }
 
 
-.logo {
-    font-size: 27px;
-    font-weight: bold;
-}
+        /* =========================
+           NAVBAR
+           ========================= */
 
+        .navbar {
 
-nav {
-    display: flex;
-    gap: 25px;
-}
+            background: #2563eb;
 
+            color: white;
 
-nav a {
-    color: white;
-    text-decoration: none;
-    font-weight: bold;
-}
+            padding: 16px 30px;
 
+            display: flex;
 
-nav a:hover {
-    color: #38bdf8;
-}
+            justify-content: space-between;
 
+            align-items: center;
 
-.page-title {
-    text-align: center;
-    padding: 40px 20px 25px;
-}
+            box-shadow:
+                0 2px 8px rgba(0,0,0,0.15);
 
+        }
 
-.page-title h1 {
-    font-size: 34px;
-    color: #0f172a;
-}
 
+        .logo {
 
-.page-title p {
-    margin-top: 10px;
-    color: #64748b;
-}
+            font-size: 24px;
 
+            font-weight: bold;
 
-.booking-container {
-    width: 90%;
-    max-width: 900px;
+        }
 
-    margin: 20px auto 60px;
 
-    background: white;
+        .nav-links {
 
-    padding: 30px;
+            display: flex;
 
-    border-radius: 15px;
+            gap: 8px;
 
-    box-shadow:
-        0 8px 25px rgba(0,0,0,0.08);
-}
+            align-items: center;
 
+            flex-wrap: wrap;
 
-.room-info {
-    text-align: center;
-    margin-bottom: 30px;
-}
+        }
 
 
-.room-info img {
-    width: 100%;
-    max-width: 450px;
-    height: 260px;
+        .nav-links a {
 
-    object-fit: cover;
+            color: white;
 
-    border-radius: 12px;
+            text-decoration: none;
 
-    margin-bottom: 20px;
-}
+            padding: 9px 12px;
 
+            border-radius: 6px;
 
-.room-info h2 {
-    font-size: 28px;
-    color: #0f172a;
-}
+            font-size: 14px;
 
+        }
 
-.room-type {
-    color: #64748b;
-    margin-top: 8px;
-}
 
+        .nav-links a:hover {
 
-.price {
-    margin-top: 12px;
+            background:
+                rgba(255,255,255,0.15);
 
-    font-size: 22px;
+        }
 
-    font-weight: bold;
 
-    color: #15803d;
-}
+        /* =========================
+           CONTAINER
+           ========================= */
 
+        .container {
 
-.message {
-    padding: 15px;
+            width: 90%;
 
-    border-radius: 8px;
+            max-width: 1000px;
 
-    margin-bottom: 20px;
+            margin: 40px auto;
 
-    text-align: center;
+        }
 
-    font-weight: bold;
-}
 
+        .page-title {
 
-.error {
-    background: #fee2e2;
+            text-align: center;
 
-    color: #b91c1c;
+            margin-bottom: 25px;
 
-    border: 1px solid #fecaca;
-}
+        }
 
 
-.form-group {
-    margin-bottom: 20px;
-}
+        .page-title h1 {
 
+            font-size: 32px;
 
-.form-group label {
-    display: block;
+            margin-bottom: 8px;
 
-    margin-bottom: 8px;
+            color: #111827;
 
-    font-weight: bold;
+        }
 
-    color: #334155;
-}
 
+        .page-title p {
 
-.form-group input {
-    width: 100%;
+            color: #6b7280;
 
-    padding: 13px;
+        }
 
-    border: 1px solid #cbd5e1;
 
-    border-radius: 7px;
+        /* =========================
+           MESSAGE
+           ========================= */
 
-    font-size: 15px;
-}
+        .message {
 
+            padding: 15px;
 
-.form-group input:focus {
-    outline: none;
+            border-radius: 8px;
 
-    border-color: #2563eb;
-}
+            margin-bottom: 20px;
 
+            font-weight: bold;
 
-.time-grid {
-    display: grid;
+        }
 
-    grid-template-columns: 1fr 1fr;
 
-    gap: 20px;
-}
+        .message.success {
 
+            background: #dcfce7;
 
-.price-preview {
-    background: #eff6ff;
+            color: #166534;
 
-    border: 1px solid #bfdbfe;
+            border:
+                1px solid #86efac;
 
-    padding: 20px;
+        }
 
-    border-radius: 10px;
 
-    text-align: center;
+        .message.error {
 
-    margin: 25px 0;
-}
+            background: #fee2e2;
 
+            color: #991b1b;
 
-.price-preview p {
-    margin: 8px 0;
-}
+            border:
+                1px solid #fca5a5;
 
+        }
 
-#hours {
-    font-weight: bold;
-    color: #2563eb;
-}
 
+        /* =========================
+           BOOKING CARD
+           ========================= */
 
-#amount {
-    font-size: 25px;
+        .booking-card {
 
-    font-weight: bold;
+            background: white;
 
-    color: #15803d;
-}
+            border-radius: 12px;
 
+            padding: 30px;
 
-.buttons {
-    display: flex;
+            box-shadow:
+                0 4px 15px rgba(0,0,0,0.08);
 
-    gap: 15px;
-}
+        }
 
 
-.back-btn {
-    flex: 1;
+        .section-title {
 
-    padding: 14px;
+            font-size: 21px;
 
-    background: #64748b;
+            font-weight: bold;
 
-    color: white;
+            margin-bottom: 20px;
 
-    text-decoration: none;
+            color: #111827;
 
-    text-align: center;
+        }
 
-    border-radius: 7px;
 
-    font-weight: bold;
-}
+        /* =========================
+           FORM
+           ========================= */
 
+        .form-group {
 
-.book-btn {
-    flex: 1;
+            margin-bottom: 20px;
 
-    padding: 14px;
+        }
 
-    background: #2563eb;
 
-    color: white;
+        label {
 
-    border: none;
+            display: block;
 
-    border-radius: 7px;
+            font-weight: bold;
 
-    font-size: 16px;
+            margin-bottom: 8px;
 
-    font-weight: bold;
+            color: #374151;
 
-    cursor: pointer;
-}
+        }
 
 
-.book-btn:hover {
-    background: #1d4ed8;
-}
+        select,
+        input[type="date"],
+        input[type="time"] {
 
+            width: 100%;
 
-.back-btn:hover {
-    background: #475569;
-}
+            padding: 12px;
 
+            border:
+                1px solid #d1d5db;
 
-footer {
-    background: #0f172a;
+            border-radius: 7px;
 
-    color: white;
+            font-size: 15px;
 
-    text-align: center;
+            background: white;
 
-    padding: 20px;
+        }
 
-    margin-top: 50px;
-}
 
+        select:focus,
+        input:focus {
 
-@media (max-width: 700px) {
+            outline: none;
 
-    header {
-        flex-direction: column;
-        gap: 15px;
-    }
+            border-color: #2563eb;
 
-    nav {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 15px;
-    }
+            box-shadow:
+                0 0 0 2px
+                rgba(37,99,235,0.12);
 
-    .time-grid {
-        grid-template-columns: 1fr;
-    }
+        }
 
-    .buttons {
-        flex-direction: column;
-    }
 
-    .booking-container {
-        width: 95%;
-        padding: 20px;
-    }
+        .time-grid {
 
-}
+            display: grid;
 
-</style>
+            grid-template-columns:
+                1fr 1fr;
+
+            gap: 20px;
+
+        }
+
+
+        /* =========================
+           ROOM INFORMATION
+           ========================= */
+
+        .room-info {
+
+            display: none;
+
+            background: #eff6ff;
+
+            border:
+                1px solid #bfdbfe;
+
+            padding: 18px;
+
+            border-radius: 8px;
+
+            margin-bottom: 20px;
+
+        }
+
+
+        .room-info h3 {
+
+            color: #1d4ed8;
+
+            margin-bottom: 8px;
+
+        }
+
+
+        .room-info p {
+
+            margin: 5px 0;
+
+            color: #374151;
+
+        }
+
+
+        /* =========================
+           PRICE
+           ========================= */
+
+        .price-box {
+
+            background: #f9fafb;
+
+            border:
+                1px solid #e5e7eb;
+
+            border-radius: 8px;
+
+            padding: 18px;
+
+            margin-bottom: 20px;
+
+        }
+
+
+        .price-row {
+
+            display: flex;
+
+            justify-content:
+                space-between;
+
+            margin-bottom: 8px;
+
+        }
+
+
+        .price-total {
+
+            border-top:
+                1px solid #d1d5db;
+
+            margin-top: 10px;
+
+            padding-top: 12px;
+
+            font-size: 21px;
+
+            font-weight: bold;
+
+            color: #2563eb;
+
+        }
+
+
+        /* =========================
+           BUTTON
+           ========================= */
+
+        .book-btn {
+
+            width: 100%;
+
+            padding: 14px;
+
+            background: #2563eb;
+
+            color: white;
+
+            border: none;
+
+            border-radius: 8px;
+
+            font-size: 17px;
+
+            font-weight: bold;
+
+            cursor: pointer;
+
+        }
+
+
+        .book-btn:hover {
+
+            background: #1d4ed8;
+
+        }
+
+
+        /* =========================
+           ROOMS
+           ========================= */
+
+        .rooms-section {
+
+            margin-top: 30px;
+
+        }
+
+
+        .rooms-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(
+                    auto-fit,
+                    minmax(220px, 1fr)
+                );
+
+            gap: 15px;
+
+        }
+
+
+        .room-card {
+
+            border:
+                1px solid #e5e7eb;
+
+            padding: 18px;
+
+            border-radius: 8px;
+
+            background: white;
+
+        }
+
+
+        .room-card h3 {
+
+            color: #111827;
+
+            margin-bottom: 8px;
+
+        }
+
+
+        .room-card p {
+
+            color: #6b7280;
+
+            font-size: 14px;
+
+            margin: 5px 0;
+
+        }
+
+
+        .room-price {
+
+            color: #2563eb !important;
+
+            font-weight: bold;
+
+        }
+
+
+        /* =========================
+           RESPONSIVE
+           ========================= */
+
+        @media (max-width: 700px) {
+
+            .navbar {
+
+                flex-direction: column;
+
+                gap: 12px;
+
+            }
+
+
+            .time-grid {
+
+                grid-template-columns: 1fr;
+
+            }
+
+
+            .container {
+
+                width: 94%;
+
+            }
+
+
+            .booking-card {
+
+                padding: 20px;
+
+            }
+
+        }
+
+    </style>
 
 </head>
 
@@ -659,16 +1027,24 @@ footer {
 <body>
 
 
-<header>
+<!-- =====================================================
+     NAVIGATION
+     ===================================================== -->
+
+<nav class="navbar">
+
 
     <div class="logo">
+
         SlotSync
+
     </div>
 
-    <nav>
 
-        <a href="dashboard.php">
-            Dashboard
+    <div class="nav-links">
+
+        <a href="index.php">
+            Home
         </a>
 
         <a href="rooms.php">
@@ -679,92 +1055,58 @@ footer {
             My Bookings
         </a>
 
+        <a href="cancel_booking.php">
+            Cancel Booking
+        </a>
+
         <a href="logout.php">
             Logout
         </a>
 
-    </nav>
-
-</header>
+    </div>
 
 
-<div class="page-title">
-
-    <h1>
-        Book Your Room
-    </h1>
-
-    <p>
-        Select your date and preferred hours
-    </p>
-
-</div>
+</nav>
 
 
-<div class="booking-container">
+<!-- =====================================================
+     MAIN
+     ===================================================== -->
+
+<div class="container">
 
 
-    <!-- ROOM -->
+    <div class="page-title">
 
-    <div class="room-info">
+        <h1>
+            Book a Room
+        </h1>
 
-        <?php if (!empty($room['image'])): ?>
-
-            <img
-                src="image/rooms/<?php
-                    echo htmlspecialchars(
-                        $room['image']
-                    );
-                ?>"
-                alt="Room Image"
-            >
-
-        <?php endif; ?>
-
-
-        <h2>
-
+        <p>
+            Welcome,
             <?php
-            echo htmlspecialchars(
-                $room['room_name']
-            );
-            ?>
-
-        </h2>
-
-
-        <p class="room-type">
-
-            <?php
-            echo htmlspecialchars(
-                $room['room_type']
-            );
-            ?>
-
-        </p>
-
-
-        <p class="price">
-
-            ₹<?php
-            echo number_format(
-                $room['price_per_hour'],
-                2
-            );
-            ?>
-
-            / hour
-
+            echo htmlspecialchars($user_name);
+            ?>.
+            Select your room and hourly slot.
         </p>
 
     </div>
 
 
-    <!-- MESSAGE -->
+    <!-- =================================================
+         MESSAGE
+         ================================================= -->
 
     <?php if (!empty($message)): ?>
 
-        <div class="message error">
+        <div
+            class="message
+            <?php
+            echo htmlspecialchars(
+                $message_type
+            );
+            ?>"
+        >
 
             <?php
             echo htmlspecialchars($message);
@@ -775,179 +1117,681 @@ footer {
     <?php endif; ?>
 
 
-    <!-- FORM -->
+    <!-- =================================================
+         BOOKING FORM
+         ================================================= -->
 
-    <form method="POST">
+    <div class="booking-card">
 
 
-        <!-- DATE -->
+        <div class="section-title">
 
-        <div class="form-group">
-
-            <label for="booking_date">
-                Booking Date
-            </label>
-
-            <input
-                type="date"
-                id="booking_date"
-                name="booking_date"
-                min="<?php echo date('Y-m-d'); ?>"
-                required
-            >
+            Room Booking Details
 
         </div>
 
 
-        <!-- TIME -->
+        <form
+            method="POST"
+            action="booking.php"
+            onsubmit="return validateBooking();"
+        >
 
-        <div class="time-grid">
 
+            <!-- ROOM -->
 
             <div class="form-group">
 
-                <label for="start_time">
-                    Start Time
+                <label for="room_id">
+
+                    Select Room
+
                 </label>
 
+
+                <select
+                    name="room_id"
+                    id="room_id"
+                    required
+                    onchange="updateRoomInfo();"
+                >
+
+                    <option value="">
+
+                        -- Select a Room --
+
+                    </option>
+
+
+                    <?php
+
+                    if (
+                        $rooms_result &&
+                        $rooms_result->num_rows > 0
+                    ):
+
+                        while (
+                            $room =
+                            $rooms_result->fetch_assoc()
+                        ):
+
+                    ?>
+
+                        <option
+                            value="<?php
+                            echo (int)$room['id'];
+                            ?>"
+                            data-name="<?php
+                            echo htmlspecialchars(
+                                $room['name']
+                            );
+                            ?>"
+                            data-description="<?php
+                            echo htmlspecialchars(
+                                $room['description'] ?? ""
+                            );
+                            ?>"
+                            data-location="<?php
+                            echo htmlspecialchars(
+                                $room['location'] ?? ""
+                            );
+                            ?>"
+                            data-price="<?php
+                            echo htmlspecialchars(
+                                $room['price_per_hour']
+                            );
+                            ?>"
+                            <?php
+
+                            if (
+                                $selected_room ==
+                                $room['id']
+                            ) {
+
+                                echo "selected";
+
+                            }
+
+                            ?>
+                        >
+
+                            <?php
+                            echo htmlspecialchars(
+                                $room['name']
+                            );
+                            ?>
+
+                            -
+
+                            ₹<?php
+                            echo number_format(
+                                $room['price_per_hour'],
+                                2
+                            );
+                            ?>
+
+                            /hour
+
+                        </option>
+
+
+                    <?php
+
+                        endwhile;
+
+                    else:
+
+                    ?>
+
+                        <option value="">
+
+                            No rooms available
+
+                        </option>
+
+                    <?php
+
+                    endif;
+
+                    ?>
+
+                </select>
+
+            </div>
+
+
+            <!-- ROOM INFORMATION -->
+
+            <div
+                id="roomInfo"
+                class="room-info"
+            >
+
+                <h3 id="roomName">
+                    Room
+                </h3>
+
+
+                <p id="roomDescription">
+                </p>
+
+
+                <p>
+
+                    <strong>
+                        Location:
+                    </strong>
+
+                    <span id="roomLocation">
+                    </span>
+
+                </p>
+
+
+                <p>
+
+                    <strong>
+                        Price:
+                    </strong>
+
+                    ₹<span id="roomPrice">
+                    </span>
+
+                    / hour
+
+                </p>
+
+            </div>
+
+
+            <!-- DATE -->
+
+            <div class="form-group">
+
+                <label for="booking_date">
+
+                    Select Date
+
+                </label>
+
+
                 <input
-                    type="time"
-                    id="start_time"
-                    name="start_time"
+                    type="date"
+                    name="booking_date"
+                    id="booking_date"
+                    min="<?php
+                    echo date('Y-m-d');
+                    ?>"
+                    value="<?php
+                    echo htmlspecialchars(
+                        $selected_date
+                    );
+                    ?>"
                     required
                 >
 
             </div>
 
 
-            <div class="form-group">
+            <!-- TIME -->
 
-                <label for="end_time">
-                    End Time
-                </label>
+            <div class="time-grid">
 
-                <input
-                    type="time"
-                    id="end_time"
-                    name="end_time"
-                    required
-                >
+
+                <div class="form-group">
+
+                    <label for="start_time">
+
+                        Start Time
+
+                    </label>
+
+
+                    <input
+                        type="time"
+                        name="start_time"
+                        id="start_time"
+                        value="<?php
+                        echo htmlspecialchars(
+                            $selected_start
+                        );
+                        ?>"
+                        required
+                        onchange="calculatePrice();"
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label for="end_time">
+
+                        End Time
+
+                    </label>
+
+
+                    <input
+                        type="time"
+                        name="end_time"
+                        id="end_time"
+                        value="<?php
+                        echo htmlspecialchars(
+                            $selected_end
+                        );
+                        ?>"
+                        required
+                        onchange="calculatePrice();"
+                    >
+
+                </div>
+
 
             </div>
 
 
-        </div>
+            <!-- PRICE -->
+
+            <div class="price-box">
 
 
-        <!-- PRICE -->
+                <div class="price-row">
 
-        <div class="price-preview">
-
-            <p>
-
-                Booking Duration:
-
-                <span id="hours">
-                    0
-                </span>
-
-                hour(s)
-
-            </p>
+                    <span>
+                        Price per hour
+                    </span>
 
 
-            <p>
+                    <span>
 
-                Estimated Total:
+                        ₹<span id="pricePerHour">
+                            0.00
+                        </span>
 
-                <span id="amount">
-                    ₹0.00
-                </span>
+                    </span>
 
-            </p>
-
-        </div>
+                </div>
 
 
-        <!-- BUTTONS -->
+                <div class="price-row">
 
-        <div class="buttons">
+                    <span>
+                        Number of hours
+                    </span>
 
-            <a
-                href="rooms.php"
-                class="back-btn"
-            >
-                ← Back to Rooms
-            </a>
 
+                    <span id="numberOfHours">
+
+                        0
+
+                    </span>
+
+                </div>
+
+
+                <div class="price-row price-total">
+
+                    <span>
+                        Total Amount
+                    </span>
+
+
+                    <span>
+
+                        ₹<span id="totalPrice">
+                            0.00
+                        </span>
+
+                    </span>
+
+                </div>
+
+
+            </div>
+
+
+            <!-- BUTTON -->
 
             <button
                 type="submit"
                 class="book-btn"
             >
+
                 Confirm Booking
+
             </button>
+
+
+        </form>
+
+
+    </div>
+
+
+    <!-- =================================================
+         AVAILABLE ROOMS
+         ================================================= -->
+
+    <div class="rooms-section">
+
+
+        <div class="section-title">
+
+            Available Rooms
 
         </div>
 
 
-    </form>
+        <div class="rooms-grid">
+
+
+            <?php
+
+            $display_sql = "
+                SELECT
+                    id,
+                    name,
+                    description,
+                    location,
+                    price_per_hour
+                FROM rooms
+                ORDER BY name ASC
+            ";
+
+
+            $display_result =
+                $conn->query($display_sql);
+
+
+            if (
+                $display_result &&
+                $display_result->num_rows > 0
+            ):
+
+                while (
+                    $display_room =
+                    $display_result->fetch_assoc()
+                ):
+
+            ?>
+
+
+                <div class="room-card">
+
+
+                    <h3>
+
+                        <?php
+                        echo htmlspecialchars(
+                            $display_room['name']
+                        );
+                        ?>
+
+                    </h3>
+
+
+                    <p>
+
+                        <?php
+                        echo htmlspecialchars(
+                            $display_room['description']
+                            ?? ""
+                        );
+                        ?>
+
+                    </p>
+
+
+                    <p>
+
+                        Location:
+
+                        <?php
+                        echo htmlspecialchars(
+                            $display_room['location']
+                            ?? ""
+                        );
+                        ?>
+
+                    </p>
+
+
+                    <p class="room-price">
+
+                        ₹<?php
+                        echo number_format(
+                            $display_room[
+                                'price_per_hour'
+                            ],
+                            2
+                        );
+                        ?>
+
+                        / hour
+
+                    </p>
+
+
+                </div>
+
+
+            <?php
+
+                endwhile;
+
+            else:
+
+            ?>
+
+
+                <p>
+
+                    No rooms are currently available.
+
+                </p>
+
+
+            <?php
+
+            endif;
+
+            ?>
+
+
+        </div>
+
+
+    </div>
 
 
 </div>
 
 
-<footer>
-
-    <p>
-        © 2026 SlotSync -
-        Hourly Room Booking System
-    </p>
-
-</footer>
-
+<!-- =====================================================
+     JAVASCRIPT
+     ===================================================== -->
 
 <script>
 
+
 /* =====================================================
-   PRICE
+   ROOM INFORMATION
    ===================================================== */
 
-const pricePerHour =
-    <?php echo floatval($room['price_per_hour']); ?>;
+function updateRoomInfo() {
+
+
+    const select =
+        document.getElementById("room_id");
+
+
+    const option =
+        select.options[
+            select.selectedIndex
+        ];
+
+
+    const roomInfo =
+        document.getElementById("roomInfo");
+
+
+    if (
+        !option ||
+        !option.value
+    ) {
+
+        roomInfo.style.display = "none";
+
+        document.getElementById(
+            "pricePerHour"
+        ).textContent = "0.00";
+
+        calculatePrice();
+
+        return;
+
+    }
+
+
+    const name =
+        option.getAttribute(
+            "data-name"
+        );
+
+
+    const description =
+        option.getAttribute(
+            "data-description"
+        );
+
+
+    const location =
+        option.getAttribute(
+            "data-location"
+        );
+
+
+    const price =
+        option.getAttribute(
+            "data-price"
+        );
+
+
+    document.getElementById(
+        "roomName"
+    ).textContent =
+        name;
+
+
+    document.getElementById(
+        "roomDescription"
+    ).textContent =
+        description ||
+        "Room available for booking.";
+
+
+    document.getElementById(
+        "roomLocation"
+    ).textContent =
+        location ||
+        "Not specified";
+
+
+    document.getElementById(
+        "roomPrice"
+    ).textContent =
+        parseFloat(price)
+        .toFixed(2);
+
+
+    document.getElementById(
+        "pricePerHour"
+    ).textContent =
+        parseFloat(price)
+        .toFixed(2);
+
+
+    roomInfo.style.display =
+        "block";
+
+
+    calculatePrice();
+
+}
 
 
 /* =====================================================
-   ELEMENTS
-   ===================================================== */
-
-const startInput =
-    document.getElementById("start_time");
-
-const endInput =
-    document.getElementById("end_time");
-
-const hoursDisplay =
-    document.getElementById("hours");
-
-const amountDisplay =
-    document.getElementById("amount");
-
-
-/* =====================================================
-   CALCULATE HOURS
+   PRICE CALCULATION
    ===================================================== */
 
 function calculatePrice() {
 
+
+    const start =
+        document.getElementById(
+            "start_time"
+        ).value;
+
+
+    const end =
+        document.getElementById(
+            "end_time"
+        ).value;
+
+
+    const room =
+        document.getElementById(
+            "room_id"
+        );
+
+
+    const option =
+        room.options[
+            room.selectedIndex
+        ];
+
+
+    let price = 0;
+
+
     if (
-        startInput.value === "" ||
-        endInput.value === ""
+        option &&
+        option.value
     ) {
 
-        hoursDisplay.textContent = "0";
+        price =
+            parseFloat(
+                option.getAttribute(
+                    "data-price"
+                )
+            ) || 0;
 
-        amountDisplay.textContent = "₹0.00";
+    }
+
+
+    document.getElementById(
+        "pricePerHour"
+    ).textContent =
+        price.toFixed(2);
+
+
+    if (
+        !start ||
+        !end
+    ) {
+
+        document.getElementById(
+            "numberOfHours"
+        ).textContent =
+            "0";
+
+
+        document.getElementById(
+            "totalPrice"
+        ).textContent =
+            "0.00";
+
 
         return;
 
@@ -955,70 +1799,87 @@ function calculatePrice() {
 
 
     const startParts =
-        startInput.value.split(":");
+        start.split(":");
+
 
     const endParts =
-        endInput.value.split(":");
+        end.split(":");
 
 
     const startMinutes =
-        (parseInt(startParts[0]) * 60)
-        +
+        parseInt(startParts[0]) * 60 +
         parseInt(startParts[1]);
 
 
     const endMinutes =
-        (parseInt(endParts[0]) * 60)
-        +
+        parseInt(endParts[0]) * 60 +
         parseInt(endParts[1]);
 
 
-    if (endMinutes <= startMinutes) {
+    const difference =
+        endMinutes - startMinutes;
 
-        hoursDisplay.textContent = "0";
 
-        amountDisplay.textContent = "₹0.00";
+    if (difference <= 0) {
+
+        document.getElementById(
+            "numberOfHours"
+        ).textContent =
+            "0";
+
+
+        document.getElementById(
+            "totalPrice"
+        ).textContent =
+            "0.00";
+
 
         return;
 
     }
 
 
-    const totalMinutes =
-        endMinutes - startMinutes;
+    if (
+        difference % 60 !== 0
+    ) {
+
+        document.getElementById(
+            "numberOfHours"
+        ).textContent =
+            "Invalid";
 
 
-    const totalHours =
-        totalMinutes / 60;
+        document.getElementById(
+            "totalPrice"
+        ).textContent =
+            "0.00";
 
 
-    const totalAmount =
-        totalHours * pricePerHour;
+        return;
+
+    }
 
 
-    hoursDisplay.textContent =
-        totalHours.toFixed(2);
+    const hours =
+        difference / 60;
 
 
-    amountDisplay.textContent =
-        "₹" + totalAmount.toFixed(2);
+    const total =
+        hours * price;
+
+
+    document.getElementById(
+        "numberOfHours"
+    ).textContent =
+        hours;
+
+
+    document.getElementById(
+        "totalPrice"
+    ).textContent =
+        total.toFixed(2);
 
 }
-
-
-/* =====================================================
-   UPDATE PRICE
-   ===================================================== */
-
-startInput.addEventListener(
-    "change",
-    calculatePrice
-);
-
-endInput.addEventListener(
-    "change",
-    calculatePrice
-);
 
 
 /* =====================================================
@@ -1027,17 +1888,71 @@ endInput.addEventListener(
 
 function validateBooking() {
 
+
+    const room =
+        document.getElementById(
+            "room_id"
+        ).value;
+
+
+    const date =
+        document.getElementById(
+            "booking_date"
+        ).value;
+
+
     const start =
-        startInput.value;
+        document.getElementById(
+            "start_time"
+        ).value;
+
 
     const end =
-        endInput.value;
+        document.getElementById(
+            "end_time"
+        ).value;
 
 
-    if (!start || !end) {
+    if (!room) {
 
         alert(
-            "Please select start time and end time."
+            "Please select a room."
+        );
+
+        return false;
+
+    }
+
+
+    if (!date) {
+
+        alert(
+            "Please select a booking date."
+        );
+
+        return false;
+
+    }
+
+
+    if (
+        !start ||
+        !end
+    ) {
+
+        alert(
+            "Please select start and end time."
+        );
+
+        return false;
+
+    }
+
+
+    if (end <= start) {
+
+        alert(
+            "End time must be later than starting time."
         );
 
         return false;
@@ -1048,30 +1963,44 @@ function validateBooking() {
     const startParts =
         start.split(":");
 
+
     const endParts =
         end.split(":");
 
 
     const startMinutes =
-        (parseInt(startParts[0]) * 60)
-        +
+        parseInt(startParts[0]) * 60 +
         parseInt(startParts[1]);
 
 
     const endMinutes =
-        (parseInt(endParts[0]) * 60)
-        +
+        parseInt(endParts[0]) * 60 +
         parseInt(endParts[1]);
 
 
-    const totalMinutes =
+    const difference =
         endMinutes - startMinutes;
 
 
-    if (totalMinutes < 60) {
+    if (
+        difference % 60 !== 0
+    ) {
 
         alert(
-            "Please select at least 1 hour."
+            "Please select a whole number of hours."
+        );
+
+        return false;
+
+    }
+
+
+    if (
+        difference < 60
+    ) {
+
+        alert(
+            "Please select at least one hour."
         );
 
         return false;
@@ -1083,6 +2012,22 @@ function validateBooking() {
 
 }
 
+
+/* =====================================================
+   PAGE LOAD
+   ===================================================== */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+
+        updateRoomInfo();
+
+        calculatePrice();
+
+    }
+);
+
 </script>
 
 
@@ -1090,7 +2035,8 @@ function validateBooking() {
 
 </html>
 
-
 <?php
+
 $conn->close();
+
 ?>
